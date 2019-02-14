@@ -10,16 +10,20 @@ const client = bugsnag({
   collectUserIp: false,
   beforeSend: function (report) {
     if (localStorage.getItem('sendErrorReports') !== 'true') {
-      report.ignore()
+      report.ignore();
+      return false;
     }
+
+    report.stacktrace = report.stacktrace.map(function (frame) {
+      frame.file = frame.file.replace(/chrome-extension:/g, 'chrome_extension:');
+      // Create consistent file paths for source mapping / error reporting.
+      frame.file = frame.file.replace(
+        /(moz-extension|file):\/\/.*\/scripts\/(.*)/ig,
+        'togglbutton://scripts/$2'
+      );
+      return frame;
+    });
   }
 });
-
-client.beforeNotify = function(error, metaData) {
-  error.stacktrace = error.stacktrace.replace(
-    /chrome-extension:/g,
-    'chromeextension:'
-  );
-};
 
 export default client;

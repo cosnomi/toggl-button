@@ -1753,7 +1753,6 @@ window.TogglButton = {
         } else {
           errorSource = 'Unknown';
         }
-
         if (process.env.DEBUG) {
           console.log(error);
           console.log(request.category + ' Script Error [' + errorSource + ']');

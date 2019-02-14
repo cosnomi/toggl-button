@@ -1,7 +1,9 @@
 const path = require('path');
+const fs = require('fs');
 const CleanPlugin = require('clean-webpack-plugin');
 const CopyPlugin = require('copy-webpack-plugin');
 const FileManagerPlugin = require('filemanager-webpack-plugin');
+const { BugsnagSourceMapUploaderPlugin } = require('webpack-bugsnag-plugins');
 const { EnvironmentPlugin } = require('webpack');
 const log = require('webpack-log')({ name: 'wds' });
 const pkg = require('./package.json');
@@ -24,14 +26,18 @@ const config = f => (
   return f(env);
 };
 
+const BUGSNAG_API_KEY = '7419717b29de539ab0fbe35dcd7ca19d';
+
 module.exports = config(({ development, production, version }) => ({
   target: 'web',
   context: path.resolve(__dirname, 'src'),
+  devtool: 'source-map',
   entry: {
     ...entry('background'),
     ...entry('common'),
     ...entry('popup'),
-    ...entry('settings')
+    ...entry('settings'),
+    ...entryContentScripts()
   },
   output: {
     path: path.resolve(__dirname, 'dist'),
@@ -49,7 +55,7 @@ module.exports = config(({ development, production, version }) => ({
   plugins: [
     new EnvironmentPlugin({
       API_URL: 'https://toggl.com/api',
-      BUGSNAG_API_KEY: '7419717b29de539ab0fbe35dcd7ca19d',
+      BUGSNAG_API_KEY: BUGSNAG_API_KEY,
       DEBUG: development,
       GA_TRACKING_ID: 'UA-3215787-22',
       VERSION: version
@@ -63,10 +69,6 @@ module.exports = config(({ development, production, version }) => ({
       ...copy({
         from: 'images/',
         to: 'images/'
-      }),
-      ...copy({
-        from: 'scripts/content/',
-        to: 'scripts/content/'
       }),
       ...copy({
         from: 'sounds/',
@@ -88,9 +90,23 @@ module.exports = config(({ development, production, version }) => ({
       }
     ]),
     production &&
+      new BugsnagSourceMapUploaderPlugin({
+        apiKey: BUGSNAG_API_KEY,
+        appVersion: version,
+        publicPath: 'togglbutton://',
+        overwrite: true /* Overwrites existing sourcemaps for this version */
+      }),
+    production &&
       new FileManagerPlugin({
         onEnd: [
           {
+            delete: [
+              'dist/**/*.js.map'
+            ],
+            copy: [
+              { source: 'dist/scripts/**/*', destination: 'dist/chrome/scripts' },
+              { source: 'dist/scripts/**/*', destination: 'dist/firefox/scripts' }
+            ],
             archive: [
               {
                 source: 'dist/chrome',
@@ -110,11 +126,18 @@ module.exports = config(({ development, production, version }) => ({
   ].filter(Boolean)
 }));
 
-function entry(name) {
+function entry (name) {
   return {
-    [`chrome/scripts/${name}`]: `./scripts/${name}.js`,
-    [`firefox/scripts/${name}`]: `./scripts/${name}.js`
+    [`scripts/${name}`]: `./scripts/${name}.js`
   };
+}
+
+function entryContentScripts () {
+  const contentScriptFiles = fs.readdirSync('./src/scripts/content/');
+  return contentScriptFiles.reduce((entries, file) => {
+    const name = file.replace('.js', '');
+    return Object.assign(entries, entry(`content/${name}`));
+  }, {});
 }
 
 function copy(o) {
